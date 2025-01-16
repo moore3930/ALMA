@@ -1033,7 +1033,6 @@ def preprocess_cpo_data(train_raw_data, valid_raw_data, test_raw_data, pairs, to
         sys2_output_key = f"alma_{target_lang}"
         ref_output_key = target_lang
 
-
         # Human eval
         if "Delta" in example and example["Delta"] != 0:
             if example["Delta"] > 0:
@@ -1047,12 +1046,14 @@ def preprocess_cpo_data(train_raw_data, valid_raw_data, test_raw_data, pairs, to
 
         # Finding the indexes for the highest and lowest scores
         highest_score_index = scores.index(max(scores))
+        highest_score = max(scores)
         lowest_score_index = scores.index(min(scores))
+        lowest_score = min(scores)
 
         # Assigning the corresponding sentences
         highest_score_sentence = sentences[highest_score_index]
         lowest_score_sentence = sentences[lowest_score_index]
-        return highest_score_sentence, lowest_score_sentence
+        return highest_score_sentence, lowest_score_sentence, highest_score, lowest_score
             
     def meet_requirements(prompt_tok, example, target_lang):
         # if prompt is too long
@@ -1071,6 +1072,8 @@ def preprocess_cpo_data(train_raw_data, valid_raw_data, test_raw_data, pairs, to
             "prompt": [],
             "chosen": [],
             "rejected": [],
+            "chosen_score": [],
+            "rejected_score": [],
         }
         for ex in examples["translation"]:
             source_lang, target_lang = ex["language_pair"].split("-")
@@ -1082,9 +1085,11 @@ def preprocess_cpo_data(train_raw_data, valid_raw_data, test_raw_data, pairs, to
                 prompt_tok = tokenizer(prompt, max_length=data_args.max_source_length, padding=True, truncation=True, add_special_tokens=True if not model_args.chat_style else False).input_ids
                 if meet_requirements(prompt_tok, ex, target_lang):
                     new_examples["prompt"].append(prompt)
-                    chosen, rejected = get_chosen_reject(ex, target_lang)
+                    chosen, rejected, chosen_score, rejected_score = get_chosen_reject(ex, target_lang)
                     new_examples["chosen"].append(chosen)
                     new_examples["rejected"].append(rejected)
+                    new_examples["chosen_score"].append(chosen_score)
+                    new_examples["rejected_score"].append(rejected_score)
             if f"{target_lang}-{source_lang}" in pairs:
                 prompt = get_prompt(target_lang, source_lang, ex)
                 if model_args.chat_style:
