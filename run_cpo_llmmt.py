@@ -108,7 +108,7 @@ def main():
         args=training_args,
         train_dataset=train_datasets,
         eval_dataset=eval_datasets,
-        tokenizer=tokenizer,
+        processing_class=tokenizer,
         callbacks=[SavePeftModelCallback] if model_args.use_peft else None,
     )
     # Training
