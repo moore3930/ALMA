@@ -1194,6 +1194,7 @@ def preprocess_lpo_data(train_raw_data, valid_raw_data, test_raw_data, pairs, to
 
         # Human eval
         if "Delta" in example and example["Delta"] != 0:
+            return [], []
             if example["Delta"] > 0:
                 return example[sys1_output_key], example[sys2_output_key]
             else:
