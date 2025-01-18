@@ -1068,6 +1068,7 @@ def preprocess_cpo_data(train_raw_data, valid_raw_data, test_raw_data, pairs, to
         return True 
 
     def cpo_prompt_function(examples):
+        gamma = 0.02
         new_examples = {
             "prompt": [],
             "chosen": [],
@@ -1084,8 +1085,10 @@ def preprocess_cpo_data(train_raw_data, valid_raw_data, test_raw_data, pairs, to
                     prompt = tokenizer.apply_chat_template(chat_style_prompt, tokenize=False, add_generation_prompt=True)
                 prompt_tok = tokenizer(prompt, max_length=data_args.max_source_length, padding=True, truncation=True, add_special_tokens=True if not model_args.chat_style else False).input_ids
                 if meet_requirements(prompt_tok, ex, target_lang):
-                    new_examples["prompt"].append(prompt)
                     chosen, rejected, chosen_score, rejected_score = get_chosen_reject(ex, target_lang)
+                    if chosen_score - rejected_score < gamma:
+                        continue
+                    new_examples["prompt"].append(prompt)
                     new_examples["chosen"].append(chosen)
                     new_examples["rejected"].append(rejected)
                     new_examples["chosen_score"].append(chosen_score)
@@ -1097,10 +1100,14 @@ def preprocess_cpo_data(train_raw_data, valid_raw_data, test_raw_data, pairs, to
                     prompt = tokenizer.apply_chat_template(chat_style_prompt, tokenize=False, add_generation_prompt=True)
                 prompt_tok = tokenizer(prompt, max_length=data_args.max_source_length, padding=True, truncation=True, add_special_tokens=True if not model_args.chat_style else False).input_ids
                 if meet_requirements(prompt_tok, ex, source_lang):
+                    chosen, rejected, chosen_score, rejected_score = get_chosen_reject(ex, source_lang)
+                    if chosen_score - rejected_score < gamma:
+                        continue
                     new_examples["prompt"].append(prompt)
-                    chosen, rejected = get_chosen_reject(ex, source_lang)
                     new_examples["chosen"].append(chosen)
                     new_examples["rejected"].append(rejected)
+                    new_examples["chosen_score"].append(chosen_score)
+                    new_examples["rejected_score"].append(rejected_score)
         return new_examples
 
     def aya_cpo_function(examples):
@@ -1169,5 +1176,186 @@ def preprocess_cpo_data(train_raw_data, valid_raw_data, test_raw_data, pairs, to
             
         train_datasets = concatenate_datasets(processed_datasets)
         train_datasets = train_datasets.shuffle(seed=training_args.seed)        
+
+    return train_datasets, eval_datasets, test_datasets
+
+
+def preprocess_lpo_data(train_raw_data, valid_raw_data, test_raw_data, pairs, tokenizer, shots_eval_dict, data_args,
+                        training_args, model_args):
+    def get_hyp_and_scores(example, target_lang):
+        sys1_score_key = f"gpt4_{target_lang}_{data_args.cpo_scorer}"
+        sys2_score_key = f"alma_{target_lang}_{data_args.cpo_scorer}"
+        ref_score_key = f"ref_{target_lang}_{data_args.cpo_scorer}"
+
+        sys1_output_key = f"gpt4_{target_lang}"
+        sys2_output_key = f"alma_{target_lang}"
+        ref_output_key = target_lang
+
+        # Human eval
+        if "Delta" in example and example["Delta"] != 0:
+            if example["Delta"] > 0:
+                return example[sys1_output_key], example[sys2_output_key]
+            else:
+                return example[sys2_output_key], example[sys1_output_key]
+
+        # Defining the sentences and their scores
+        sentences = [example[ref_output_key], example[sys1_output_key], example[sys2_output_key]]
+        scores = [example[ref_score_key], example[sys1_score_key], example[sys2_score_key]]
+
+        # Combine sentences and scores for sorting
+        combined = list(zip(scores, sentences))
+
+        # Sort combined list by scores in descending order
+        sorted_combined = sorted(combined, key=lambda x: x[0], reverse=True)
+
+        # Unzip the sorted list
+        scores, sentences = zip(*sorted_combined)
+
+        # Convert tuples back to lists if needed
+        scores = list(scores)
+        sentences = list(sentences)
+
+        return sentences, scores
+
+    def meet_requirements(prompt_tok, example, target_lang):
+        # if prompt is too long
+        if len(prompt_tok) > data_args.max_source_length:
+            return False
+
+        # if the order is fixed, e.g., it has to be en->de
+        if "required_directions" in example and example["required_directions"] != "":
+            tgt = example["required_directions"].split("-")[1]
+            if tgt != target_lang:
+                return False
+        return True
+
+    def lpo_prompt_function(examples):
+        gamma = 0.02
+        new_examples = {
+            "prompt": [],
+            "chosen": [],
+            "rejected": [],
+            "chosen_score": [],
+            "rejected_score": [],
+        }
+        for ex in examples["translation"]:
+            source_lang, target_lang = ex["language_pair"].split("-")
+            if f"{source_lang}-{target_lang}" in pairs:
+                prompt = get_prompt(source_lang, target_lang, ex)
+                if model_args.chat_style:
+                    chat_style_prompt = [{"role": "user", "content": prompt}]
+                    prompt = tokenizer.apply_chat_template(chat_style_prompt, tokenize=False,
+                                                           add_generation_prompt=True)
+                prompt_tok = tokenizer(prompt, max_length=data_args.max_source_length, padding=True, truncation=True,
+                                       add_special_tokens=True if not model_args.chat_style else False).input_ids
+                if meet_requirements(prompt_tok, ex, target_lang):
+                    sentences, scores = get_hyp_and_scores(ex, target_lang)
+                    for i in range(len(scores)):
+                        for j in range(i+1, len(scores)):
+                            chosen = sentences[i]
+                            rejected = sentences[j]
+                            chosen_score = scores[i]
+                            rejected_score = scores[j]
+
+                            if chosen_score - rejected_score < gamma:
+                                continue
+                            new_examples["prompt"].append(prompt)
+                            new_examples["chosen"].append(chosen)
+                            new_examples["rejected"].append(rejected)
+                            new_examples["chosen_score"].append(chosen_score)
+                            new_examples["rejected_score"].append(rejected_score)
+            if f"{target_lang}-{source_lang}" in pairs:
+                prompt = get_prompt(target_lang, source_lang, ex)
+                if model_args.chat_style:
+                    chat_style_prompt = [{"role": "user", "content": prompt}]
+                    prompt = tokenizer.apply_chat_template(chat_style_prompt, tokenize=False,
+                                                           add_generation_prompt=True)
+                prompt_tok = tokenizer(prompt, max_length=data_args.max_source_length, padding=True, truncation=True,
+                                       add_special_tokens=True if not model_args.chat_style else False).input_ids
+                if meet_requirements(prompt_tok, ex, source_lang):
+                    sentences, scores = get_hyp_and_scores(ex, source_lang)
+                    for i in range(len(scores)):
+                        for j in range(i+1, len(scores)):
+                            chosen = sentences[i]
+                            rejected = sentences[j]
+                            chosen_score = scores[i]
+                            rejected_score = scores[j]
+
+                            if chosen_score - rejected_score < gamma:
+                                continue
+                            new_examples["prompt"].append(prompt)
+                            new_examples["chosen"].append(chosen)
+                            new_examples["rejected"].append(rejected)
+                            new_examples["chosen_score"].append(chosen_score)
+                            new_examples["rejected_score"].append(rejected_score)
+        return new_examples
+
+    def aya_cpo_function(examples):
+        new_examples = {
+            "prompt": [],
+            "chosen": [],
+            "rejected": [],
+        }
+        for prompt, chosen, rejected in zip(examples["prompt"], examples["chosen"], examples["rejected"]):
+            if model_args.chat_style:
+                chat_style_prompt = [{"role": "user", "content": prompt}]
+                prompt = tokenizer.apply_chat_template(chat_style_prompt, tokenize=False, add_generation_prompt=True)
+            prompt_tok = tokenizer(prompt, max_length=data_args.max_source_length, padding=True, truncation=True,
+                                   add_special_tokens=True if not model_args.chat_style else False).input_ids
+            if len(prompt_tok) < data_args.max_source_length:
+                new_examples["prompt"].append(prompt)
+                new_examples["chosen"].append(chosen)
+                new_examples["rejected"].append(rejected)
+        return new_examples
+
+    # Preprocessing the datasets.
+    train_datasets, eval_datasets, test_datasets = None, None, None
+    if training_args.do_train:
+        processed_datasets = []
+        if data_args.cpo_data_path:
+            for lg_pair, sub_raw_data in train_raw_data["mmt"].items():
+                train_dataset = sub_raw_data["train"]
+                if data_args.max_train_samples is not None:
+                    max_train_samples = min(len(train_dataset), data_args.max_train_samples)
+                    train_dataset = train_dataset.select(range(max_train_samples))
+                with training_args.main_process_first(desc="CPO train dataset map pre-processing"):
+                    if not data_args.streaming:
+                        train_dataset = train_dataset.map(
+                            cpo_prompt_function,
+                            batched=True,
+                            batch_size=1,
+                            num_proc=data_args.preprocessing_num_workers,
+                            remove_columns=["translation"],
+                            load_from_cache_file=not data_args.overwrite_cache,
+                            desc="Running CPO preprocessing",
+                        )
+                    else:
+                        train_dataset = train_dataset.map(
+                            cpo_prompt_function,
+                            batched=True,
+                            batch_size=1,
+                            remove_columns=["translation"],
+                        )
+                processed_datasets.append(train_dataset)
+
+        if data_args.aya_datasets:
+            for lg in train_raw_data["aya"].keys():
+                train_dataset = train_raw_data["aya"][lg]["train"]
+                if data_args.max_train_samples is not None:
+                    max_train_samples = min(len(train_dataset), data_args.max_train_samples)
+                    train_dataset = train_dataset.select(range(max_train_samples))
+                with training_args.main_process_first(desc="Aya CPO dataset map pre-processing"):
+                    train_dataset = train_dataset.map(
+                        aya_cpo_function,
+                        batched=True,
+                        batch_size=1,
+                        num_proc=data_args.preprocessing_num_workers,
+                        load_from_cache_file=not data_args.overwrite_cache,
+                        desc="Running tokenizer on Aya CPO train dataset",
+                    )
+                processed_datasets.append(train_dataset)
+
+        train_datasets = concatenate_datasets(processed_datasets)
+        train_datasets = train_datasets.shuffle(seed=training_args.seed)
 
     return train_datasets, eval_datasets, test_datasets
