@@ -1321,7 +1321,7 @@ def preprocess_lpo_data(train_raw_data, valid_raw_data, test_raw_data, pairs, to
                 with training_args.main_process_first(desc="CPO train dataset map pre-processing"):
                     if not data_args.streaming:
                         train_dataset = train_dataset.map(
-                            cpo_prompt_function,
+                            lpo_prompt_function,
                             batched=True,
                             batch_size=1,
                             num_proc=data_args.preprocessing_num_workers,
@@ -1331,7 +1331,7 @@ def preprocess_lpo_data(train_raw_data, valid_raw_data, test_raw_data, pairs, to
                         )
                     else:
                         train_dataset = train_dataset.map(
-                            cpo_prompt_function,
+                            lpo_prompt_function,
                             batched=True,
                             batch_size=1,
                             remove_columns=["translation"],
