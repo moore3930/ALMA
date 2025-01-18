@@ -1035,6 +1035,7 @@ def preprocess_cpo_data(train_raw_data, valid_raw_data, test_raw_data, pairs, to
 
         # Human eval
         if "Delta" in example and example["Delta"] != 0:
+            return None, None, None, None
             if example["Delta"] > 0:
                 return example[sys1_output_key], example[sys2_output_key]
             else:
@@ -1086,7 +1087,7 @@ def preprocess_cpo_data(train_raw_data, valid_raw_data, test_raw_data, pairs, to
                 prompt_tok = tokenizer(prompt, max_length=data_args.max_source_length, padding=True, truncation=True, add_special_tokens=True if not model_args.chat_style else False).input_ids
                 if meet_requirements(prompt_tok, ex, target_lang):
                     chosen, rejected, chosen_score, rejected_score = get_chosen_reject(ex, target_lang)
-                    if float(chosen_score) - float(rejected_score) < gamma:
+                    if None in [chosen, rejected, chosen_score, rejected_score]:
                         continue
                     new_examples["prompt"].append(prompt)
                     new_examples["chosen"].append(chosen)
@@ -1101,7 +1102,7 @@ def preprocess_cpo_data(train_raw_data, valid_raw_data, test_raw_data, pairs, to
                 prompt_tok = tokenizer(prompt, max_length=data_args.max_source_length, padding=True, truncation=True, add_special_tokens=True if not model_args.chat_style else False).input_ids
                 if meet_requirements(prompt_tok, ex, source_lang):
                     chosen, rejected, chosen_score, rejected_score = get_chosen_reject(ex, source_lang)
-                    if float(chosen_score) - float(rejected_score) < gamma:
+                    if None in [chosen, rejected, chosen_score, rejected_score]:
                         continue
                     new_examples["prompt"].append(prompt)
                     new_examples["chosen"].append(chosen)
