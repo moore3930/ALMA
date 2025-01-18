@@ -1086,7 +1086,7 @@ def preprocess_cpo_data(train_raw_data, valid_raw_data, test_raw_data, pairs, to
                 prompt_tok = tokenizer(prompt, max_length=data_args.max_source_length, padding=True, truncation=True, add_special_tokens=True if not model_args.chat_style else False).input_ids
                 if meet_requirements(prompt_tok, ex, target_lang):
                     chosen, rejected, chosen_score, rejected_score = get_chosen_reject(ex, target_lang)
-                    if chosen_score - rejected_score < gamma:
+                    if float(chosen_score) - float(rejected_score) < gamma:
                         continue
                     new_examples["prompt"].append(prompt)
                     new_examples["chosen"].append(chosen)
@@ -1101,7 +1101,7 @@ def preprocess_cpo_data(train_raw_data, valid_raw_data, test_raw_data, pairs, to
                 prompt_tok = tokenizer(prompt, max_length=data_args.max_source_length, padding=True, truncation=True, add_special_tokens=True if not model_args.chat_style else False).input_ids
                 if meet_requirements(prompt_tok, ex, source_lang):
                     chosen, rejected, chosen_score, rejected_score = get_chosen_reject(ex, source_lang)
-                    if chosen_score - rejected_score < gamma:
+                    if float(chosen_score) - float(rejected_score) < gamma:
                         continue
                     new_examples["prompt"].append(prompt)
                     new_examples["chosen"].append(chosen)
@@ -1257,7 +1257,7 @@ def preprocess_lpo_data(train_raw_data, valid_raw_data, test_raw_data, pairs, to
                             chosen_score = scores[i]
                             rejected_score = scores[j]
 
-                            if chosen_score - rejected_score < gamma:
+                            if float(chosen_score) - float(rejected_score) < gamma:
                                 continue
                             new_examples["prompt"].append(prompt)
                             new_examples["chosen"].append(chosen)
@@ -1281,7 +1281,7 @@ def preprocess_lpo_data(train_raw_data, valid_raw_data, test_raw_data, pairs, to
                             chosen_score = scores[i]
                             rejected_score = scores[j]
 
-                            if chosen_score - rejected_score < gamma:
+                            if float(chosen_score) - float(rejected_score) < gamma:
                                 continue
                             new_examples["prompt"].append(prompt)
                             new_examples["chosen"].append(chosen)
