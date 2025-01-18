@@ -15,7 +15,7 @@ from transformers import (
     HfArgumentParser,
     set_seed,
 )
-from utils.utils import preprocess_cpo_data, load_tokenizer, load_model, SavePeftModelCallback
+from utils.utils import preprocess_cpo_data, preprocess_lpo_data, load_tokenizer, load_model, SavePeftModelCallback
 from utils.arguments import ModelArguments, DataTrainingArguments
 from trl import CPOTrainer, CPOConfig
 
@@ -93,7 +93,11 @@ def main():
                 shots_eval_dict[lg_pair] = json.load(f)
 
     # Preprocess data
-    train_datasets, eval_datasets, test_datasets = preprocess_cpo_data(train_raw_data, valid_raw_data, test_raw_data, pairs, tokenizer, shots_eval_dict, data_args, training_args, model_args)
+    if training_args.loss_type == "list_vpo":
+        process_data = preprocess_lpo_data
+    else:
+        process_data = preprocess_cpo_data
+    train_datasets, eval_datasets, test_datasets = process_data(train_raw_data, valid_raw_data, test_raw_data, pairs, tokenizer, shots_eval_dict, data_args, training_args, model_args)
 
     # Load model
     model = load_model(data_args, model_args, training_args, tokenizer, logger) 
